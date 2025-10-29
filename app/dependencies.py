@@ -38,8 +38,16 @@ async def check_rate_limit(request: Request):
         return True
 
 def authenticate(request: Request):
-    """Authenticate requests using service token"""
+    """Authenticate requests using service token or Bearer token"""
+    # Check X-Service-Token (legacy)
     token = request.headers.get('X-Service-Token')
+    
+    # Check Authorization Bearer token (standard)
+    if not token:
+        auth_header = request.headers.get('Authorization')
+        if auth_header and auth_header.startswith('Bearer '):
+            token = auth_header.replace('Bearer ', '')
+    
     if not token or token != config.SECRET_KEY:
         return False
     return True

@@ -32,6 +32,10 @@ env/
 .env
 .env.local
 .env.*.local
+*.env
+
+# Scripts with sensitive data
+scripts/test_endpoints.ps1
 
 # IDE
 .vscode/

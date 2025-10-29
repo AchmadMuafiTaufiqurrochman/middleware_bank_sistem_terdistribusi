@@ -2,7 +2,8 @@
 Health Check and Monitoring Routes
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Security
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.dependencies import auth_dependency, get_db_connection
 from app.config import Config
 from core.circuit_breaker import circuit_breaker
@@ -12,6 +13,7 @@ import logging
 router = APIRouter()
 config = Config()
 logger = logging.getLogger(__name__)
+security = HTTPBearer()
 
 @router.get('/health')
 async def health_check():
@@ -47,7 +49,7 @@ async def health_check():
         logger.error(f'Health check failed: {e}')
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get('/api/v1/stats')
+@router.get('/api/v1/stats', dependencies=[Security(security)])
 async def get_statistics(_: bool = Depends(auth_dependency)):
     """
     Get transaction statistics
@@ -64,7 +66,7 @@ async def get_statistics(_: bool = Depends(auth_dependency)):
         logger.error(f'Failed to get statistics: {e}')
         raise HTTPException(status_code=500, detail='Failed to retrieve statistics')
 
-@router.post('/api/v1/circuit-breaker/reset/{service_name}')
+@router.post('/api/v1/circuit-breaker/reset/{service_name}', dependencies=[Security(security)])
 async def reset_circuit_breaker(service_name: str, _: bool = Depends(auth_dependency)):
     """
     Manually reset circuit breaker for a service

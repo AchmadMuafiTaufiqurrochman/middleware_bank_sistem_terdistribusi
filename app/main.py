@@ -6,6 +6,7 @@ FastAPI application with smart transaction routing
 from fastapi import FastAPI, Depends, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import logging
 from app.config import Config
 from app.routes import transactions, accounts, health
@@ -23,13 +24,27 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Create FastAPI app
+# Create FastAPI app with security scheme
 app = FastAPI(
     title="Middleware Bank System",
-    description="API Gateway & Transaction Router for MiniBank Distributed System",
+    description="""
+    API Gateway & Transaction Router for MiniBank Distributed System
+    
+    ## Authentication
+    
+    Most endpoints require authentication using one of these methods:
+    
+    1. **Bearer Token** (Standard): `Authorization: Bearer YOUR_SECRET_KEY`
+    2. **X-Service-Token Header**: `X-Service-Token: YOUR_SECRET_KEY`
+    
+    Click the 🔒 Authorize button and enter your SECRET_KEY to authenticate.
+    """,
     version="1.0.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    swagger_ui_parameters={
+        "persistAuthorization": True
+    }
 )
 
 # CORS middleware
@@ -69,7 +84,7 @@ if __name__ == '__main__':
     import uvicorn
     uvicorn.run(
         app,
-        host='0.0.0.0',
+        host='localhost',
         port=3000,
         log_level=config.LOG_LEVEL.lower()
     )
