@@ -172,19 +172,81 @@ async def history_mutations(request: Request, data: MutationRequest, _: bool = D
 async def receive_external_transaction(request: Request):
     """
     Receive incoming transaction from external bank
-    Requires X-API-Key header from external bank
+    Optional: X-API-Key header from external bank for authentication
     """
     logger.info(f'Receiving external transaction from {request.client.host}')
     start_time = time.time()
     
     try:
-        # Verify external bank API key
+        # Optional: Verify external bank API key (log warning if missing, but allow request)
         api_key = request.headers.get('X-API-Key')
         if not api_key:
-            raise HTTPException(status_code=401, detail='API Key required')
+            logger.warning(f'Transaction received without API key from {request.client.host}')
+        else:
+            logger.info(f'Transaction received with API key: {api_key[:10]}...')
         
-        # Parse request
-        data = await request.json()
+        # Parse request - handle both JSON and form data
+        content_type = request.headers.get('content-type', '').lower()
+        logger.info(f'Content-Type: {content_type}')
+        
+        data = {}
+        
+        if 'application/json' in content_type:
+            # Handle JSON format
+            try:
+                data = await request.json()
+            except Exception as json_error:
+                logger.error(f'Invalid JSON in request: {json_error}')
+                body = await request.body()
+                logger.error(f'Raw request body: {body}')
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f'Invalid JSON format: {str(json_error)}'
+                )
+        elif 'multipart/form-data' in content_type or 'application/x-www-form-urlencoded' in content_type:
+            # Handle form data
+            try:
+                form = await request.form()
+                data = dict(form)
+                logger.info(f'Received form data: {data}')
+            except Exception as form_error:
+                logger.error(f'Invalid form data: {form_error}')
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f'Invalid form data: {str(form_error)}'
+                )
+        else:
+            # Try to get raw body and parse it
+            body = await request.body()
+            logger.error(f'Unknown content type. Raw body: {body[:200]}')
+            
+            # If body is empty, return helpful message
+            if not body:
+                raise HTTPException(
+                    status_code=400, 
+                    detail='Empty request body. Please send JSON data with required fields: sender_account, receiver_account, amount'
+                )
+            
+            # Try to parse as JSON anyway
+            try:
+                import json
+                data = json.loads(body)
+            except:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f'Unsupported content type: {content_type}. Please use application/json'
+                )
+        
+        logger.info(f'Received transaction data: {data}')
+        
+        # Validate required fields
+        required_fields = ['sender_account', 'receiver_account', 'amount']
+        missing_fields = [field for field in required_fields if not data.get(field)]
+        if missing_fields:
+            raise HTTPException(
+                status_code=400, 
+                detail=f'Missing required fields: {", ".join(missing_fields)}'
+            )
         
         # Transform external format to internal format
         internal_data = {
@@ -207,17 +269,20 @@ async def receive_external_transaction(request: Request):
         
         duration_ms = int((time.time() - start_time) * 1000)
         
-        # Log transaction
-        await transaction_logger.log_transaction(
-            transaction_type='incoming_external',
-            source_system=data.get('sender_bank', 'unknown'),
-            target_system='core_bank',
-            endpoint='/api/v1/transactions/incoming',
-            request_payload=data,
-            response_payload=response.json() if response.status_code == 200 else None,
-            status_code=response.status_code,
-            duration_ms=duration_ms
-        )
+        # Log transaction (non-blocking, best effort)
+        try:
+            await transaction_logger.log_transaction(
+                transaction_type='incoming_external',
+                source_system=data.get('sender_bank', 'unknown'),
+                target_system='core_bank',
+                endpoint='/api/v1/transactions/incoming',
+                request_payload=data,
+                response_payload=response.json() if response.status_code == 200 else None,
+                status_code=response.status_code,
+                duration_ms=duration_ms
+            )
+        except Exception as log_error:
+            logger.warning(f'Failed to log transaction: {log_error}')
         
         if response.status_code == 200:
             return {
@@ -227,7 +292,15 @@ async def receive_external_transaction(request: Request):
             }
         else:
             raise HTTPException(status_code=response.status_code, detail='Transaction failed')
-            
+    
+    except HTTPException:
+        raise
+    except httpx.TimeoutException as e:
+        logger.error(f'Timeout receiving external transaction: {e}')
+        raise HTTPException(status_code=504, detail='Gateway timeout')
+    except httpx.ConnectError as e:
+        logger.error(f'Connection error receiving external transaction: {e}')
+        raise HTTPException(status_code=502, detail='Bad gateway')
     except Exception as e:
-        logger.error(f'Failed to receive external transaction: {e}')
+        logger.error(f'Failed to receive external transaction: {e}', exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

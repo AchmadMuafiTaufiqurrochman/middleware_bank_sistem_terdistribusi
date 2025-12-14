@@ -46,4 +46,20 @@ class AccountService:
             return result
         except Exception as e:
             logger.error(f"Error getting account detail: {e}")
+            raise    
+    async def create_account(self, account_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Create new account in core bank
+        
+        Args:
+            account_data: Account information
+            
+        Returns:
+            Created account information
+        """
+        try:
+            result = await self.service_client.create_account(account_data)
+            return result
+        except Exception as e:
+            logger.error(f"Error creating account: {e}")
             raise

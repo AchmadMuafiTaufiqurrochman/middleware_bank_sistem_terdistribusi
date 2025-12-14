@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import logging
 from app.config import Config
-from app.routes import transactions, accounts, health
+from app.routes import transactions, accounts, health, test
 
 # Load configuration
 config = Config()
@@ -60,6 +60,7 @@ app.add_middleware(
 app.include_router(health.router, tags=["Health & Monitoring"])
 app.include_router(accounts.router, prefix="/core", tags=["Accounts"])
 app.include_router(transactions.router, prefix="/api/v1", tags=["Transactions"])
+app.include_router(test.router, tags=["Testing"])
 
 # Root endpoint
 @app.get("/")
